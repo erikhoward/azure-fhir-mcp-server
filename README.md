@@ -28,7 +28,7 @@ On Windows, the file is located here: `%APPDATA%\Claude Desktop\claude_desktop_c
 {
     "mcpServers": {
         "fhir": {
-            "command": "uv",
+            "command": "uvx",
             "args": [
                 "azure-fhir-mcp-server"
             ],
