@@ -197,7 +197,10 @@ async def get_{resource_type.lower()}(ctx: Context) -> Dict[str, Any]:
         return {{}}
 """)
 
-# Main execution
-if __name__ == "__main__":
+def main():
     logger.info("Starting FHIR MCP Server")
     mcp.run()
+
+# Main execution
+if __name__ == "__main__":
+    main()

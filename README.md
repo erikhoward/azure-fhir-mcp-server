@@ -8,13 +8,9 @@ A Model Context Protocol (MCP) server implementation for Azure Health Data Servi
 
 ### Installation 📦
 
-Requires Python 3.13 or higher.
+Requires Python 3.13 or higher and `uv`.
 
-Install the package using `pip`:
-
-```bash
-pip install azure-fhir-mcp-server
-```
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first.
 
 ### MCP Configuration ⚙️
 
@@ -32,7 +28,10 @@ On Windows, the file is located here: `%APPDATA%\Claude Desktop\claude_desktop_c
 {
     "mcpServers": {
         "fhir": {
-            "command": "azure-fhir-mcp-server",
+            "command": "uv",
+            "args": [
+                "azure-fhir-mcp-server"
+            ],
             "env": {
                 "LOG_LEVEL": "INFO",
                 "fhirUrl": "https://your-fhir-server.azurehealthcareapis.com/fhir",
@@ -135,12 +134,13 @@ On Windows, the file is located here: `%APPDATA%\Claude Desktop\claude_desktop_c
 {
     "mcpServers": {
         "fhir": {
-            "command": "python",
+            "command": "uv",
             "args": [
-                "-m",
-                "fhir_mcp_server.server"
+                "--directory",
+                "/path/to/azure-fhir-mcp-server/repo",
+                "run",
+                "azure_fhir_mcp_server"
             ],
-            "cwd": "/path/to/azure-fhir-mcp-server/repo",
             "env": {
                 "LOG_LEVEL": "DEBUG",
                 "fhirUrl": "https://your-fhir-server.azurehealthcareapis.com/fhir",
