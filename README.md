@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/erikhoward-azure-fhir-mcp-server-badge.png)](https://mseep.ai/app/erikhoward-azure-fhir-mcp-server)
+
 # Azure AHDS FHIR MCP Server 🚀
 
 A Model Context Protocol (MCP) server implementation for Azure Health Data Services FHIR (Fast Healthcare Interoperability Resources). This service provides a standardized interface for interacting with Azure FHIR servers, enabling healthcare data operations through MCP tools.
