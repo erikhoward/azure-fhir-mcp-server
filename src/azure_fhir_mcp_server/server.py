@@ -2,12 +2,10 @@ from fastmcp import FastMCP, Context
 from fastmcp.server.auth.providers.azure import AzureProvider
 import os
 import requests
-import json
 from typing import List, Dict, Any, Optional
 import logging
-import time
-import hashlib
-import base64
+from threading import Lock
+import msal
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -85,86 +83,66 @@ FHIR_RESOURCES = [
 ]
 
 
-# FHIR token management
-_OBO_TOKEN_CACHE: Dict[str, Dict[str, Any]] = {}
+# MSAL confidential client
+_MSAL_TOKEN_CACHE = msal.SerializableTokenCache()
+_MSAL_APP: Optional[msal.ConfidentialClientApplication] = None
+_MSAL_APP_LOCK = Lock()
 
 
-def _derive_default_scopes() -> str:
+def _derive_default_scope() -> str:
     # Derive a default scope string for AAD v2 endpoint; ensure no trailing slash duplication
     base = FHIR_URL.rstrip('/')
     return f"{base}/.default"
 
 
-def _decode_jwt_claim(token: str, claim: str) -> Optional[Any]:
-    try:
-        parts = token.split('.')
-        if len(parts) < 2:
-            return None
-        payload_b64 = parts[1] + '==='  # pad
-        padded = payload_b64.replace('-', '+').replace('_', '/')
-        decoded = base64.b64decode(padded)
-        data = json.loads(decoded)
-        return data.get(claim)
-    except Exception:
-        return None
+def _get_fhir_scopes() -> List[str]:
+    if FHIR_SCOPE_OVERRIDE:
+        scopes = [scope.strip() for scope in FHIR_SCOPE_OVERRIDE.split() if scope.strip()]
+        if scopes:
+            return scopes
+    return [_derive_default_scope()]
 
 
-def _obo_cache_key(user_token: str, scopes: str) -> str:
-    h = hashlib.sha256()
-    h.update(user_token.encode('utf-8'))
-    h.update(scopes.encode('utf-8'))
-    return h.hexdigest()
+def _get_confidential_client() -> msal.ConfidentialClientApplication:
+    global _MSAL_APP
+    with _MSAL_APP_LOCK:
+        if _MSAL_APP:
+            return _MSAL_APP
+
+        tenant_id = os.environ.get("tenantId")
+        client_id = os.environ.get("clientId")
+        client_secret = os.environ.get("clientSecret")
+        if not all([tenant_id, client_id, client_secret]):
+            raise EnvironmentError("MSAL client requires tenantId, clientId, clientSecret env vars")
+
+        authority = os.environ.get("MSAL_AUTHORITY", f"https://login.microsoftonline.com/{tenant_id}")
+        _MSAL_APP = msal.ConfidentialClientApplication(
+            client_id=client_id,
+            client_credential=client_secret,
+            authority=authority,
+            token_cache=_MSAL_TOKEN_CACHE,
+        )
+        logger.info("Initialized MSAL confidential client for tenant %s", tenant_id)
+        return _MSAL_APP
 
 
-def _get_valid_cached_obo_token(cache_key: str) -> Optional[str]:
-    entry = _OBO_TOKEN_CACHE.get(cache_key)
-    if not entry:
-        return None
-    if entry['expires_at'] - 30 > time.time():  # 30s grace
-        return entry['access_token']
-    return None
+def _obo_exchange(user_token: str) -> str:
+    app = _get_confidential_client()
+    scopes = _get_fhir_scopes()
+    logger.info("Performing MSAL OBO token exchange for FHIR scopes: %s", " ".join(scopes))
 
+    result = app.acquire_token_on_behalf_of(user_assertion=user_token, scopes=scopes)
+    if "access_token" in result:
+        logger.info("Obtained OBO token for FHIR access (expires_in=%s)", result.get("expires_in"))
+        return result["access_token"]
 
-def _store_obo_token(cache_key: str, access_token: str, expires_in: int):
-    _OBO_TOKEN_CACHE[cache_key] = {
-        'access_token': access_token,
-        'expires_at': time.time() + expires_in
-    }
-
-
-def _obo_exchange(user_token: str, ctx: Optional[Context]) -> str:
-    tenant_id = os.environ.get("tenantId")
-    client_id = os.environ.get("clientId")
-    client_secret = os.environ.get("clientSecret")
-    if not all([tenant_id, client_id, client_secret]):
-        raise EnvironmentError("OBO flow requires tenantId, clientId, clientSecret env vars")
-
-    scopes = FHIR_SCOPE_OVERRIDE if FHIR_SCOPE_OVERRIDE else _derive_default_scopes()
-    cache_key = _obo_cache_key(user_token, scopes)
-    cached = _get_valid_cached_obo_token(cache_key)
-    if cached:
-        logger.info("Using cached OBO token for FHIR access")
-        return cached
-
-    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-    data = {
-        'client_id': client_id,
-        'client_secret': client_secret,
-        'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        'requested_token_use': 'on_behalf_of',
-        'assertion': user_token,
-        'scope': scopes,
-    }
-    logger.info("Performing OBO token exchange for FHIR scopes: %s", scopes)
-    response = requests.post(token_url, data=data)
-    if response.status_code != 200:
-        raise Exception(f"OBO token exchange failed: {response.status_code} - {response.text}")
-    token_data = response.json()
-    access_token = token_data['access_token']
-    expires_in = token_data.get('expires_in', 3600)
-    _store_obo_token(cache_key, access_token, expires_in)
-    logger.info("Obtained new OBO token for FHIR access (expires_in=%s)", expires_in)
-    return access_token
+    error = result.get("error")
+    description = result.get("error_description")
+    correlation = result.get("correlation_id")
+    detail = f"{error}: {description}" if error or description else "Unknown MSAL error"
+    if correlation:
+        detail = f"{detail} (correlation_id={correlation})"
+    raise Exception(f"OBO token exchange failed via MSAL: {detail}")
 
 
 async def get_fhir_token(ctx: Context = None) -> str:
@@ -189,10 +167,10 @@ async def get_fhir_token(ctx: Context = None) -> str:
             raw_user_token = getattr(user_token_obj, 'token', None) or str(user_token_obj)
             if not raw_user_token or raw_user_token == 'None':
                 raise Exception("Invalid user token format")
-           
+
             if ctx:
                 await ctx.info("Using On-Behalf-Of (OBO) flow to obtain FHIR token")
-            token = _obo_exchange(raw_user_token, ctx)
+            token = _obo_exchange(raw_user_token)
             return token
 
         except Exception as e:
@@ -202,30 +180,22 @@ async def get_fhir_token(ctx: Context = None) -> str:
                 await ctx.error(error_msg)
             raise
     else:
-        # Client credentials mode: Get service token for FHIR access (AAD v1 endpoint)
-        client_id = os.environ.get("clientId")
-        client_secret = os.environ.get("clientSecret")
-        tenant_id = os.environ.get("tenantId")
-        if not all([client_id, client_secret, tenant_id]):
-            raise EnvironmentError("Missing client credentials: clientId, clientSecret, tenantId")
-        token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/token"
-        payload = {
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "resource": FHIR_URL
-        }
+        # Client credentials mode: Acquire service token for FHIR access via MSAL
         try:
-            response = requests.post(token_url, data=payload)
-            if response.status_code != 200:
-                error_msg = f"Failed to obtain FHIR token: {response.status_code} - {response.text}"
+            app = _get_confidential_client()
+            scopes = _get_fhir_scopes()
+            result = app.acquire_token_for_client(scopes=scopes)
+            if "access_token" not in result:
+                error_msg = (
+                    "Failed to obtain FHIR token via MSAL client credentials: "
+                    f"{result.get('error')}: {result.get('error_description')}"
+                )
                 logger.error(error_msg)
                 if ctx:
                     await ctx.error(error_msg)
                 raise Exception(error_msg)
-            token_data = response.json()
-            logger.info("Successfully obtained FHIR token via client credentials")
-            return token_data["access_token"]
+            logger.info("Successfully obtained FHIR token via MSAL client credentials")
+            return result["access_token"]
         except Exception as e:
             error_msg = f"Error obtaining FHIR token: {str(e)}"
             logger.error(error_msg)

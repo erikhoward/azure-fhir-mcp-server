@@ -27,7 +27,8 @@ dependencies = [
     "fastmcp @ git+https://github.com/jlowin/fastmcp.git@main",
     "python-dotenv>=1.1.0",
     "requests>=2.32.3",
-    "uvicorn[standard]>=0.37.0"
+    "uvicorn[standard]>=0.37.0",
+    "msal>=1.28.0"
 ]
 
 [project.scripts]
