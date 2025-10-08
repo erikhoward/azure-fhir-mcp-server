@@ -12,28 +12,27 @@ Requires Python 3.13 or higher and `uv`.
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first.
 
-### MCP Configuration ⚙️
+### Configuration ⚙️
 
-#### Claude Desktop Configuration
+See the FastMCP guidance on `mcp.json` here: [https://gofastmcp.com/integrations/mcp-json-configuration](https://gofastmcp.com/integrations/mcp-json-configuration)
 
-1 - Edit Claude Desktop Configuration:
+#### Client Credentials Flow (default):
 
-Open `claude_desktop_config.json` and add the following configuration.
-
-On MacOs, the file is located here: `~/Library/Application Support/Claude Desktop/claude_desktop_config.json`.
-
-On Windows, the file is located here: `%APPDATA%\Claude Desktop\claude_desktop_config.json`.
+- Used for service-to-service authentication
+- Leave `USE_FAST_MCP_OAUTH_PROXY=false`
+- Keep `HTTP_TRANSPORT=false` to use stdio transport
+- Uses Azure AD client credentials flow
 
 ```json
 {
     "mcpServers": {
         "fhir": {
+            "type": "stdio",
             "command": "uvx",
             "args": [
                 "azure-fhir-mcp-server"
             ],
             "env": {
-                "LOG_LEVEL": "INFO",
                 "fhirUrl": "https://your-fhir-server.azurehealthcareapis.com/fhir",
                 "clientId": "your-client-id",
                 "clientSecret": "your-client-secret",
@@ -44,23 +43,70 @@ On Windows, the file is located here: `%APPDATA%\Claude Desktop\claude_desktop_c
 }
 ```
 
+#### OAuth On-Behalf-Of Flow:
+
+##### Create the Azure App Registration
+
+The OAuth on-behalf-of flow requires a confidential Azure AD application that represents the MCP server.
+
+1. In the Azure portal, go to **Microsoft Entra ID ➜ App registrations ➜ New registration**. Give it a descriptive name such as `FHIR-MCP-Server`, set **Supported account types** to *Single tenant*, and leave the redirect URI unset for now.
+2. After the app is created, capture the generated `Application (client) ID` and `Directory (tenant) ID` for later use.
+3. Under **Expose an API**, select **Set** for the Application ID URI and accept the suggested value `api://{appId}`. Add a scope named `user_impersonation` with admin consent display/description also set to `user_impersonation`.
+4. Under **Certificates & secrets**, create a **New client secret** (for example `FHIR-MCP-Secret-New`). Copy the secret value immediately; it is required for the MCP server `clientSecret` setting.
+5. Under **Authentication**, add the following Web redirect URIs to support the FastMCP OAuth proxy:
+    - `http://localhost:9002/auth/callback`
+    Ensure **Default client type** remains *No* so the app stays confidential.
+6. Under **API permissions**, choose **Add a permission ➜ APIs my organization uses**, search for your Azure Health Data Services FHIR server, and add the delegated scopes required for your scenario. Grant admin consent so the FastMCP proxy can request tokens without an interactive prompt.
+
+- Environment variables:
+    - Set `USE_FAST_MCP_OAUTH_PROXY=true`
+    - Requires `HTTP_TRANSPORT=true`
+
+- Start the MCP server with:
+
+```bash
+uv pip install -e .
+uv run --env-file .env azure-fhir-mcp-server
+```
+
+- Update mcp.json:
+
+```json
+{
+    "mcpServers": {
+        "fhir": {
+            "type": "http",
+            "url": "http://localhost:9002/mcp"
+        }
+    }
+}
+```
+
 The following is a table of available environment configuration variables:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LOG_LEVEL` | Logging level | `INFO` |
-| `fhirUrl` | Azure FHIR server URL | Required |
-| `clientId` | OAuth2 client ID | Required |
-| `clientSecret` | OAuth2 client secret | Required |
-| `tenantId` | Azure AD tenant ID | Required |
-
-2 - Restart Claude Desktop.
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `fhirUrl` | Azure FHIR server base URL (include `/fhir`) | - | Yes |
+| `clientId` | Azure App registration client ID | - | Yes |
+| `clientSecret` | Azure App registration client secret | - | Yes |
+| `tenantId` | Azure AD tenant ID | - | Yes |
+| `USE_FAST_MCP_OAUTH_PROXY` | Enable FastMCP Azure OAuth proxy integration | `false` | No |
+| `HTTP_TRANSPORT` | Run the MCP server over HTTP transport (required for OAuth proxy) | `false` | No |
+| `FASTMCP_HTTP_PORT` | Port exposed when `HTTP_TRANSPORT=true` | `9002` | No |
+| `FHIR_SCOPE` | Override FHIR audience scope for the OBO flow (space-separated) | `{fhirUrl}/.default` | No |
+| `FASTMCP_SERVER_AUTH_AZURE_BASE_URL` | Public base URL of your FastMCP server | `http://localhost:9002` | No |
+| `FASTMCP_SERVER_AUTH_AZURE_REDIRECT_PATH` | OAuth callback path appended to the base URL | `/auth/callback` | No |
+| `FASTMCP_SERVER_AUTH_AZURE_IDENTIFIER_URI` | Azure App registration Application ID URI | `api://{clientId}` | No |
+| `FASTMCP_SERVER_AUTH_AZURE_REQUIRED_SCOPES` | Space-separated scopes requested by the Azure provider | `user_impersonation` | No |
+| `FASTMCP_SERVER_AUTH_AZURE_ADDITIONAL_AUTHORIZE_SCOPES` | Optional space-separated scopes added to the authorize request | - | No |
+| `LOG_LEVEL` | Logging level | `INFO` | No |
 
 ### Available Tools 🔧
 
 #### FHIR Resource Operations
 
 * `search_fhir` - Search for FHIR resources based on a dictionary of search parameters
+* `get_user_info` - (OAuth only) Returns information about the authenticated Azure user
 
 #### Resource Access
 
