@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Azure FHIR MCP Server",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "src/azure_fhir_mcp_server/server.py",
+            "cwd": "${workspaceFolder}/azure-fhir-mcp-server",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/azure-fhir-mcp-server/.env",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/azure-fhir-mcp-server/src",
+                "LOG_LEVEL": "DEBUG"
+            },
+            "justMyCode": true,
+            "stopOnEntry": false
+        }
+    ]
+}
