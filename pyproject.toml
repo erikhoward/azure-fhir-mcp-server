@@ -28,7 +28,15 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "requests>=2.32.3",
     "uvicorn[standard]>=0.37.0",
-    "msal>=1.28.0"
+    "msal>=1.28.0",
+    "PyYAML>=6.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0"
 ]
 
 [project.scripts]
@@ -49,6 +57,13 @@ allow-direct-references = true
 name = "pypi"
 url = "https://pypi.org/simple/"
 publish-url = "https://upload.pypi.org/legacy/"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/erikhoward/azure-fhir-mcp-server"

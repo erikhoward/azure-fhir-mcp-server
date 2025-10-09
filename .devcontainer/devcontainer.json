@@ -1,0 +1,59 @@
+{
+  "name": "Azure FHIR MCP Server",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers-extra/features/uv:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "redhat.vscode-yaml",
+        "ms-vscode.vscode-json",
+        "github.copilot",
+        "github.copilot-chat",
+        "github.vscode-pull-request-github",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "./.venv/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "python.formatting.provider": "black",
+        "python.sortImports.args": [
+          "--profile",
+          "black"
+        ],
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": "explicit"
+        },
+        "python.terminal.activateEnvironment": true,
+        "python.testing.pytestArgs": [
+          "tests",
+          "-v"
+        ],
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestEnabled": true,
+        "python.testing.autoTestDiscoverOnSaveEnabled": true,
+        "python.envFile": "${workspaceFolder}/.env"
+      }
+    }
+  },
+  "forwardPorts": [
+    9002
+  ],
+  "portsAttributes": {
+    "9002": {
+      "label": "MCP Server HTTP",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "uv sync --extra dev",
+  "workspaceFolder": "/workspaces/azure-fhir-mcp-server-marrobi"
+}
