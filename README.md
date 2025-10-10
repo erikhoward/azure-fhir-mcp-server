@@ -201,6 +201,22 @@ On Windows, the file is located here: `%APPDATA%\Claude Desktop\claude_desktop_c
 
 6 - Restart Claude Desktop.
 
+## Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=src/azure_fhir_mcp_server
+
+# Run specific test
+pytest tests/test_fastmcp_metadata.py::TestFastMCPMetadata::test_fastmcp_server_discovery -v
+
+# Run with detailed output
+pytest tests/test_fastmcp_metadata.py::TestFastMCPMetadata::test_output_detailed_metadata -v -s
+```
+
 ## Contributions 🤝
 
 Contributions are welcome! Please feel free to submit a Pull Request.

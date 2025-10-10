@@ -1,0 +1,9 @@
+{
+	"servers": {
+		"fhir": {
+			"url": "http://localhost:9002/mcp",
+			"type": "http"
+		}
+	},
+	"inputs": []
+}
